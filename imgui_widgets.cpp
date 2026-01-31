@@ -45,6 +45,9 @@ Index of this file:
 // System includes
 #include <stdint.h>     // intptr_t
 
+// Other includes
+#include "expr_eval.cpp"
+
 //-------------------------------------------------------------------------
 // Warnings
 //-------------------------------------------------------------------------
@@ -2160,7 +2163,6 @@ void ImGui::DataTypeApplyOp(ImGuiDataType data_type, int op, void* output, const
 }
 
 // User can input math operators (e.g. +100) to edit a numerical values.
-// NB: This is _not_ a full expression evaluator. We should probably add one and replace this dumb mess..
 bool ImGui::DataTypeApplyFromText(const char* buf, ImGuiDataType data_type, void* p_data, const char* format)
 {
     while (ImCharIsBlankA(*buf))
@@ -2173,31 +2175,44 @@ bool ImGui::DataTypeApplyFromText(const char* buf, ImGuiDataType data_type, void
     ImGuiDataTypeTempStorage data_backup;
     memcpy(&data_backup, p_data, type_info->Size);
 
-    // Sanitize format
-    // - For float/double we have to ignore format with precision (e.g. "%.2f") because sscanf doesn't take them in, so force them into %f and %lf
-    // - In theory could treat empty format as using default, but this would only cover rare/bizarre case of using InputScalar() + integer + format string without %.
-    char format_sanitized[32];
-    if (data_type == ImGuiDataType_Float || data_type == ImGuiDataType_Double)
-        format = type_info->ScanFmt;
-    else
-        format = ImParseFormatSanitizeForScanning(format, format_sanitized, IM_ARRAYSIZE(format_sanitized));
+    ExprEval eval{};
+    double result = eval.Eval((char*)buf);
 
-    // Small types need a 32-bit buffer to receive the result from scanf()
-    int v32 = 0;
-    if (sscanf(buf, format, type_info->Size >= 4 ? p_data : &v32) < 1)
-        return false;
-    if (type_info->Size < 4)
+    if (eval.GetErr() == EEE_NO_ERROR)
     {
-        if (data_type == ImGuiDataType_S8)
-            *(ImS8*)p_data = (ImS8)ImClamp(v32, (int)IM_S8_MIN, (int)IM_S8_MAX);
-        else if (data_type == ImGuiDataType_U8)
-            *(ImU8*)p_data = (ImU8)ImClamp(v32, (int)IM_U8_MIN, (int)IM_U8_MAX);
-        else if (data_type == ImGuiDataType_S16)
-            *(ImS16*)p_data = (ImS16)ImClamp(v32, (int)IM_S16_MIN, (int)IM_S16_MAX);
-        else if (data_type == ImGuiDataType_U16)
-            *(ImU16*)p_data = (ImU16)ImClamp(v32, (int)IM_U16_MIN, (int)IM_U16_MAX);
+        if (data_type == ImGuiDataType_S32)
+        {
+            int* v = (int*)p_data;
+            *v = (int)result;
+        }
+        else if (data_type == ImGuiDataType_Float)
+        {
+            float* v = (float*)p_data;
+            *v = (float)result;
+        }
+        else if (data_type == ImGuiDataType_Double)
+        {
+            double* v = (double*)p_data;
+            *v = (double)result;
+        }
+        else if (data_type == ImGuiDataType_U32 || data_type == ImGuiDataType_S64 || data_type == ImGuiDataType_U64)
+        {
+        }
         else
-            IM_ASSERT(0);
+        {
+            // Small types need a 32-bit buffer to receive the result from scanf()
+            int v32 = (int)result;
+            if (data_type == ImGuiDataType_S8)
+                *(ImS8*)p_data = (ImS8)ImClamp(v32, (int)IM_S8_MIN, (int)IM_S8_MAX);
+            else if (data_type == ImGuiDataType_U8)
+                *(ImU8*)p_data = (ImU8)ImClamp(v32, (int)IM_U8_MIN, (int)IM_U8_MAX);
+            else if (data_type == ImGuiDataType_S16)
+                *(ImS16*)p_data = (ImS16)ImClamp(v32, (int)IM_S16_MIN, (int)IM_S16_MAX);
+            else if (data_type == ImGuiDataType_U16)
+                *(ImU16*)p_data = (ImU16)ImClamp(v32, (int)IM_U16_MIN, (int)IM_U16_MAX);
+            else
+                IM_ASSERT(0);
+        }
     }
 
     return memcmp(&data_backup, p_data, type_info->Size) != 0;

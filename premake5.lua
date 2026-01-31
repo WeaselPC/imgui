@@ -21,6 +21,7 @@ project "ImGui"
 		"imgui_demo.cpp",
         "imgui_stdlib.cpp",
         "imgui_stdlib.h",
+		"expr_eval.cpp"
 	}
 
 	filter "system:windows"
